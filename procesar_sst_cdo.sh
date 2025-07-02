@@ -2,66 +2,69 @@
 
 # Configuración
 data_dir="./data"
-start_year=1994
+start_year=199
 end_year=2025
 
-# Paso 1: Generar archivos anuales combinados y comprimidos
-echo "📦 Paso 1: Combinando y comprimiendo archivos diarios por año..."
+# Paso 1: Combinar archivos diarios → anuales
+echo "📦 Paso 1: Combinando archivos diarios por año..."
 
 for year in $(seq $start_year $end_year); do
     daily_dir="$data_dir/$year"
-    temp_file="$data_dir/coraltemp_v3.1_${year}.nc"
-    compressed_file="$data_dir/coraltemp_v3.1_${year}_c.nc"
+    annual_raw="$data_dir/coraltemp_v3.1_${year}.nc"
+    annual_compressed="$data_dir/coraltemp_v3.1_${year}_c.nc"
 
-    if [ ! -f "$compressed_file" ]; then
-        echo "🔄 Procesando año $year..."
+    if [ ! -f "$annual_compressed" ]; then
+        echo "🔄 Año $year: combinando diarios..."
+        cdo mergetime "$daily_dir"/*.nc "$annual_raw"
 
-        # Combinar archivos diarios
-        cdo mergetime "$daily_dir"/*.nc "$temp_file"
-
-        # Comprimir con nccopy -d 9
-        echo "📦 Comprimiendo $temp_file..."
-        nccopy -d 9 "$temp_file" "$compressed_file"
-        rm -f "$temp_file"
-
-        # Eliminar archivos diarios y carpeta
-        echo "🧹 Eliminando archivos diarios de $year..."
-        rm -rf "$daily_dir"
+        echo "📦 Comprimiendo archivo anual..."
+        nccopy -d 9 "$annual_raw" "$annual_compressed"
+        rm -f "$annual_raw"
     else
-        echo "✔️ Ya existe: $compressed_file, omitido."
+        echo "✔️ Ya existe comprimido: $annual_compressed, omitido."
     fi
 done
 
-# Paso 2: Unir todos los archivos anuales comprimidos y comprimir resultado
-echo "📦 Paso 2: Uniendo y comprimiendo archivos anuales en coraltemp_v3.1.nc..."
+# Paso 2: Recortar y comprimir cada archivo anual comprimido
+echo "✂️ Paso 2: Recortando y comprimiendo archivos anuales..."
 
-merged_tmp="$data_dir/tmp_combined.nc"
-combined_file="$data_dir/coraltemp_v3.1.nc"
+for year in $(seq $start_year $end_year); do
+    annual_compressed="$data_dir/coraltemp_v3.1_${year}_c.nc"
+    cropped_tmp="$data_dir/tmp_crop_${year}.nc"
+    cropped_compressed="$data_dir/coraltemp_v3.1_${year}_PACHO.nc"
 
-if [ ! -f "$combined_file" ]; then
-    cdo mergetime $data_dir/coraltemp_v3.1_*_c.nc "$merged_tmp"
-    echo "📦 Comprimiendo archivo combinado..."
-    nccopy -d 9 "$merged_tmp" "$combined_file"
+    if [ ! -f "$cropped_compressed" ]; then
+        echo "✂️ Año $year: recortando región..."
+        cdo sellonlatbox,-120,-60,0,30 "$annual_compressed" "$cropped_tmp"
+
+        echo "📦 Comprimiendo archivo recortado..."
+        nccopy -d 9 "$cropped_tmp" "$cropped_compressed"
+        rm -f "$cropped_tmp"
+    else
+        echo "✔️ Ya existe recortado: $cropped_compressed, omitido."
+    fi
+done
+
+# Paso 3: Eliminar carpetas de diarios
+echo "🧹 Paso 3: Eliminando archivos diarios..."
+for year in $(seq $start_year $end_year); do
+    rm -rf "$data_dir/$year"
+done
+
+# Paso 4: Combinar archivos recortados en uno global
+echo "📦 Paso 4: Combinando archivos recortados..."
+
+merged_tmp="$data_dir/tmp_combined_PACHO.nc"
+final_combined="$data_dir/coraltemp_v3.1_PACHO.nc"
+
+if [ ! -f "$final_combined" ]; then
+    cdo mergetime $data_dir/coraltemp_v3.1_*_PACHO.nc "$merged_tmp"
+    echo "📦 Comprimiendo archivo combinado final..."
+    nccopy -d 9 "$merged_tmp" "$final_combined"
     rm -f "$merged_tmp"
-    echo "✅ Archivo combinado comprimido: $combined_file"
+    echo "✅ Archivo final creado: $final_combined"
 else
-    echo "✔️ Ya existe: $combined_file, omitido."
+    echo "✔️ Ya existe: $final_combined, omitido."
 fi
 
-# Paso 3: Recortar región y comprimir
-echo "✂️ Paso 3: Recortando y comprimiendo coraltemp_v3.1.nc..."
-
-cropped_tmp="$data_dir/tmp_cropped.nc"
-cropped_file="$data_dir/coraltemp_v3.1_PWP.nc"
-
-if [ ! -f "$cropped_file" ]; then
-    cdo sellonlatbox,-120,-60,0,30 "$combined_file" "$cropped_tmp"
-    echo "📦 Comprimiendo archivo recortado..."
-    nccopy -d 9 "$cropped_tmp" "$cropped_file"
-    rm -f "$cropped_tmp"
-    echo "✅ Archivo recortado comprimido: $cropped_file"
-else
-    echo "✔️ Ya existe: $cropped_file, omitido."
-fi
-
-echo "🏁 Procesamiento completo."
+echo "🏁 Procesamiento completo y todos los archivos comprimidos."
