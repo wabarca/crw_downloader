@@ -2,7 +2,7 @@
 
 # Configuración
 data_dir="./data"
-start_year=199
+start_year=1995
 end_year=2025
 
 # Paso 1: Combinar archivos diarios → anuales
